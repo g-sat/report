@@ -1,0 +1,6 @@
+com\example\report\service\ItemService.class
+com\example\report\config\OpenApiConfig.class
+com\example\report\controller\ReportController.class
+com\example\report\model\Item.class
+com\example\report\repository\ItemRepository.class
+com\example\report\ReportApplication.class

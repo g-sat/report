@@ -31,6 +31,23 @@ function App() {
     }
   };
 
+  const [showPreview, setShowPreview] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  const handlePreview = async () => {
+    const res = await fetch('/api/reports/preview');
+    const blob = await res.blob();
+    setPdfUrl(URL.createObjectURL(blob));
+    setShowPreview(true);
+  };
+
+  const handlePreviewInNewTab = async () => {
+    const res = await fetch('/api/reports/preview');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   useEffect(() => {
     fetchItems();
   }, []);
@@ -109,7 +126,8 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Sales Inventory Management</h1>
+  <h1 style={{letterSpacing: '1px', fontWeight: 700, color: '#1976d2', marginBottom: 10, fontSize: '2.5rem'}}>Sales Inventory Management</h1>
+  <p style={{textAlign: 'center', color: '#666', marginBottom: 30, fontSize: '1.1rem'}}>Professional inventory, PDF reporting, and real-time updates</p>
       
       {/* Add New Item Form */}
       <div className="add-item-form">
@@ -120,12 +138,15 @@ function App() {
             placeholder="Item name"
             value={newItem.name}
             onChange={(e) => setNewItem({...newItem, name: e.target.value})}
+            style={{minWidth: 160}}
           />
           <input
             type="number"
             placeholder="Quantity"
             value={newItem.quantity || ''}
             onChange={(e) => setNewItem({...newItem, quantity: parseInt(e.target.value) || 0})}
+            min={1}
+            style={{minWidth: 100}}
           />
           <input
             type="number"
@@ -133,8 +154,10 @@ function App() {
             placeholder="Price"
             value={newItem.price || ''}
             onChange={(e) => setNewItem({...newItem, price: parseFloat(e.target.value) || 0})}
+            min={0.01}
+            style={{minWidth: 100}}
           />
-          <button onClick={addItem}>Add Item</button>
+          <button onClick={addItem} style={{fontWeight: 600}}>Add Item</button>
         </div>
       </div>
 
@@ -153,23 +176,29 @@ function App() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.id}</td>
-                <td>{item.name}</td>
-                <td>{item.quantity}</td>
-                <td>${item.price.toFixed(2)}</td>
-                <td>${(item.quantity * item.price).toFixed(2)}</td>
-                <td>
-                  <button 
-                    className="remove-btn"
-                    onClick={() => removeItem(item.id)}
-                  >
-                    Remove
-                  </button>
-                </td>
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{textAlign: 'center', color: '#888'}}>No items in inventory.</td>
               </tr>
-            ))}
+            ) : (
+              items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td>{item.name}</td>
+                  <td>{item.quantity}</td>
+                  <td>${item.price.toFixed(2)}</td>
+                  <td>${(item.quantity * item.price).toFixed(2)}</td>
+                  <td>
+                    <button 
+                      className="remove-btn"
+                      onClick={() => removeItem(item.id)}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
           <tfoot>
             <tr>
@@ -181,13 +210,31 @@ function App() {
         </table>
       </div>
 
+      
+
       {/* Report Generation */}
       <div className="report-section">
-        <h3>Generate Report</h3>
-        <p>Click the button below to generate a PDF report from the database data.</p>
-        <button className="generate-report-btn" onClick={generateReport}>
-          📊 Generate PDF Report from Database
-        </button>
+        <h3>Generate & Preview Report</h3>
+        <p>Generate a professional PDF report from your inventory data, or preview it before download.</p>
+        <div className="report-btn-row">
+          <button className="generate-report-btn" onClick={generateReport}>
+            📥 Download PDF Report
+          </button>
+          <button className="preview-btn" onClick={handlePreview}>
+            👁️ Preview in Popup
+          </button>
+          <button className="preview-btn" style={{background: '#1976d2', color: '#fff', marginLeft: 8}} onClick={handlePreviewInNewTab}>
+            ↗️ Preview in New Tab
+          </button>
+        </div>
+        {showPreview && pdfUrl && (
+          <div className="modal-overlay" onClick={() => setShowPreview(false)}>
+            <div className="modal-popup" onClick={e => e.stopPropagation()}>
+              <button className="modal-close-btn" onClick={() => setShowPreview(false)}>&times;</button>
+              <iframe src={pdfUrl} width="100%" height="600px" title="Report Preview" style={{border: 'none', borderRadius: 12, boxShadow: '0 2px 16px rgba(0,0,0,0.12)'}} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
