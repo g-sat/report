@@ -9,6 +9,8 @@ interface Item {
   total: number;
 }
 
+type ReportFormat = 'pdf' | 'xlsx' | 'csv' | 'docx' | 'pptx' | 'html';
+
 function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,16 +35,17 @@ function App() {
 
   const [showPreview, setShowPreview] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [format, setFormat] = useState<ReportFormat>('pdf');
 
   const handlePreview = async () => {
-    const res = await fetch('/api/reports/preview');
+    const res = await fetch(`/api/reports/preview?format=${format}`);
     const blob = await res.blob();
     setPdfUrl(URL.createObjectURL(blob));
     setShowPreview(true);
   };
 
   const handlePreviewInNewTab = async () => {
-    const res = await fetch('/api/reports/preview');
+    const res = await fetch(`/api/reports/preview?format=${format}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -103,13 +106,13 @@ function App() {
 
   const generateReport = async () => {
     try {
-      const res = await fetch('/api/reports/generate');
+      const res = await fetch(`/api/reports/generate?format=${format}`);
       if (!res.ok) throw new Error('Failed to generate report');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'inventory-report.pdf';
+      a.download = `inventory-report.${format === 'pdf' ? 'pdf' : format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -216,14 +219,23 @@ function App() {
       <div className="report-section">
         <h3>Generate & Preview Report</h3>
         <p>Generate a professional PDF report from your inventory data, or preview it before download.</p>
-        <div className="report-btn-row">
+        <div className="report-btn-row" style={{gap: 8, alignItems: 'center', display: 'flex', flexWrap: 'wrap'}}>
+          <label style={{fontWeight: 600}}>Format:</label>
+          <select value={format} onChange={(e) => setFormat(e.target.value as ReportFormat)}>
+            <option value="pdf">PDF</option>
+            <option value="xlsx">Excel (.xlsx)</option>
+            <option value="csv">CSV</option>
+            <option value="docx">Word (.docx)</option>
+            <option value="pptx">PowerPoint (.pptx)</option>
+            <option value="html">HTML</option>
+          </select>
           <button className="generate-report-btn" onClick={generateReport}>
-            📥 Download PDF Report
+            📥 Download Report
           </button>
           <button className="preview-btn" onClick={handlePreview}>
             👁️ Preview in Popup
           </button>
-          <button className="preview-btn" style={{background: '#1976d2', color: '#fff', marginLeft: 8}} onClick={handlePreviewInNewTab}>
+          <button className="preview-btn" style={{background: '#1976d2', color: '#fff'}} onClick={handlePreviewInNewTab}>
             ↗️ Preview in New Tab
           </button>
         </div>

@@ -43,6 +43,13 @@
             <version>${jasperreports.version}</version>
         </dependency>
 
+        <!-- Apache POI for XLSX/DOCX/PPTX exporters -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
         <!-- commons-logging is not required with Spring Boot/logback; remove to avoid missing version error -->
 
         <dependency>

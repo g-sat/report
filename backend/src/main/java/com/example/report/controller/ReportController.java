@@ -4,6 +4,12 @@ import com.example.report.model.Item;
 import com.example.report.service.ItemService;
 import net.sf.jasperreports.engine.*;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
+import net.sf.jasperreports.engine.export.HtmlExporter;
+import net.sf.jasperreports.engine.export.JRCsvExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRDocxExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRPptxExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
+import net.sf.jasperreports.export.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,17 +36,13 @@ public class ReportController {
     private ItemService itemService;
 
     @GetMapping("/reports/preview")
-    public ResponseEntity<byte[]> previewReport() {
+    public ResponseEntity<byte[]> previewReport(@RequestParam(defaultValue = "pdf") String format) {
         logger.info("Received request for /reports/preview");
         try {
             List<Item> items = itemService.getAllItems();
             logger.debug("Fetched {} items for preview", items.size());
-            ResponseEntity<byte[]> response = generateReport(items);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDisposition(ContentDisposition.inline().filename("report-preview.pdf").build());
-            logger.info("Successfully generated preview PDF");
-            return new ResponseEntity<>(response.getBody(), headers, HttpStatus.OK);
+            logger.info("Successfully generated preview in format {}", format);
+            return exportReport(items, format);
         } catch (Exception e) {
             logger.error("Error generating report preview", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
@@ -87,18 +89,19 @@ public class ReportController {
 
     // Report Generation
     @PostMapping("/reports/generate")
-    public ResponseEntity<byte[]> generateReportFromData(@RequestBody List<Item> items) throws JRException {
-        return generateReport(items);
+    public ResponseEntity<byte[]> generateReportFromData(@RequestBody List<Item> items,
+                                                         @RequestParam(defaultValue = "pdf") String format) throws JRException {
+        return exportReport(items, format);
     }
 
     @GetMapping("/reports/generate")
-    public ResponseEntity<byte[]> generateReportFromDatabase() throws JRException {
+    public ResponseEntity<byte[]> generateReportFromDatabase(@RequestParam(defaultValue = "pdf") String format) throws JRException {
         List<Item> items = itemService.getAllItems();
-        return generateReport(items);
+        return exportReport(items, format);
     }
 
     @GetMapping("/reports/sample")
-    public ResponseEntity<byte[]> generateSampleReport() throws JRException {
+    public ResponseEntity<byte[]> generateSampleReport(@RequestParam(defaultValue = "pdf") String format) throws JRException {
         // Fallback to sample data if needed
         List<Item> sampleItems = List.of(
                 new Item("Apple", 3, 1.50),
@@ -107,7 +110,7 @@ public class ReportController {
                 new Item("Mango", 4, 2.30)
         );
         
-        return generateReport(sampleItems);
+        return exportReport(sampleItems, format);
     }
 
     private ResponseEntity<byte[]> generateReport(List<Item> items) throws JRException {
@@ -128,6 +131,100 @@ public class ReportController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+    }
+
+    private ResponseEntity<byte[]> exportReport(List<Item> items, String format) throws JRException {
+        logger.info("Exporting report in format: {}", format);
+        InputStream jrxmlStream = getClass().getResourceAsStream("/reports/sample_report.jrxml");
+        if (jrxmlStream == null) {
+            logger.error("Could not find JRXML template at /reports/sample_report.jrxml");
+            return ResponseEntity.internalServerError().body(null);
+        }
+        JasperReport jasperReport = JasperCompileManager.compileReport(jrxmlStream);
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("reportTitle", "Sales Inventory Report");
+        JRBeanCollectionDataSource dataSource = new JRBeanCollectionDataSource(items);
+        JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport, parameters, dataSource);
+
+        String lower = format == null ? "pdf" : format.toLowerCase();
+        try {
+            switch (lower) {
+                case "pdf":
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.pdf")
+                            .contentType(MediaType.APPLICATION_PDF)
+                            .body(JasperExportManager.exportReportToPdf(jasperPrint));
+                case "xlsx": {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    JRXlsxExporter exporter = new JRXlsxExporter();
+                    exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+                    exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(out));
+                    SimpleXlsxReportConfiguration cfg = new SimpleXlsxReportConfiguration();
+                    cfg.setDetectCellType(true);
+                    cfg.setWhitePageBackground(false);
+                    cfg.setOnePagePerSheet(false);
+                    exporter.setConfiguration(cfg);
+                    exporter.exportReport();
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.xlsx")
+                            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                            .body(out.toByteArray());
+                }
+                case "csv": {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    JRCsvExporter exporter = new JRCsvExporter();
+                    exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+                    exporter.setExporterOutput(new SimpleWriterExporterOutput(out, java.nio.charset.StandardCharsets.UTF_8.name()));
+                    SimpleCsvExporterConfiguration cfg = new SimpleCsvExporterConfiguration();
+                    cfg.setFieldDelimiter(",");
+                    exporter.setConfiguration(cfg);
+                    exporter.exportReport();
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.csv")
+                            .contentType(MediaType.parseMediaType("text/csv"))
+                            .body(out.toByteArray());
+                }
+                case "docx": {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    JRDocxExporter exporter = new JRDocxExporter();
+                    exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+                    exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(out));
+                    exporter.exportReport();
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.docx")
+                            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                            .body(out.toByteArray());
+                }
+                case "pptx": {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    JRPptxExporter exporter = new JRPptxExporter();
+                    exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+                    exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(out));
+                    exporter.exportReport();
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.pptx")
+                            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
+                            .body(out.toByteArray());
+                }
+                case "html": {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    HtmlExporter exporter = new HtmlExporter();
+                    exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+                    exporter.setExporterOutput(new SimpleHtmlExporterOutput(out));
+                    exporter.exportReport();
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=inventory-report.html")
+                            .contentType(MediaType.TEXT_HTML)
+                            .body(out.toByteArray());
+                }
+                default:
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(("Unsupported format: " + lower).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        } catch (JRException e) {
+            logger.error("Error exporting report in format {}", lower, e);
+            throw e;
+        }
     }
 }
 
